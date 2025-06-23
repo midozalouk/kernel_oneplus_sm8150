@@ -329,9 +329,9 @@ out:
 // >> Modified reset timing (50ms low/high)
 static void nq_hard_reset(struct nqx_dev *dev)
 {
-	gpio_set_value(dev->reset_gpio, 0);
+	gpio_set_value(dev->en_gpio, 0);  // >> Use en_gpio for reset
 	msleep(50); // Sony-compatible timing
-	gpio_set_value(dev->reset_gpio, 1);
+	gpio_set_value(dev->en_gpio, 1);
 	msleep(50); // Stabilization period
 }
 

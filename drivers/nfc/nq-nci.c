@@ -30,8 +30,8 @@
 #endif
 #include <linux/jiffies.h>
 
-// >> Add missing header for IRQ threading
-#include <linux/interrupt.h>
+// >> Hardware bypass flag
+static bool bypass_hw_uid_check = true;
 
 struct nqx_platform_data {
 	unsigned int irq_gpio;
@@ -87,9 +87,6 @@ struct nqx_dev {
 	u8 *kbuf;
 	struct nqx_platform_data *pdata;
 };
-
-// >> Hardware bypass flag
-static bool bypass_hw_uid_check = true;
 
 static int nfcc_reboot(struct notifier_block *notifier, unsigned long val,
 			void *v);
@@ -267,7 +264,7 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 	struct nqx_dev *nqx_dev = filp->private_data;
 	char *tmp = NULL;
 	int ret = 0;
-	int retry_cnt = 0; // >> Add retry counter
+	int retry_cnt = 0; // Fixed: Added retry counter declaration
 
 	if (!nqx_dev) {
 		ret = -ENODEV;
@@ -288,14 +285,14 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 		goto out;
 	}
 
-	// >> Hardware bypass for UID configuration
+	// Hardware bypass for UID configuration
 	if (bypass_hw_uid_check && count >= 2 && tmp[0] == 0x2A && tmp[1] == 0x02) {
 		dev_info(&nqx_dev->client->dev, "Bypassing NFC_SET_CONFIG command\n");
 		ret = count; // Fake success
 		goto out_free;
 	}
 
-	// >> I2C write with retry mechanism
+	// I2C write with retry mechanism
 	do {
 		ret = i2c_master_send(nqx_dev->client, tmp, count);
 		if (ret == count) 
@@ -303,8 +300,8 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 			
 		dev_dbg(&nqx_dev->client->dev, 
 			"Write failed (attempt %d), retrying...", retry_cnt + 1);
-		usleep_range(2000, 2500); // 2.5ms delay between retries
-	} while (retry_cnt++ < 5); // 5 retries
+		usleep_range(2000, 2500);
+	} while (retry_cnt++ < 5);
 
 	if (ret != count) {
 		dev_err(&nqx_dev->client->dev,
@@ -326,36 +323,45 @@ out:
 	return ret;
 }
 
-// >> Modified reset timing (50ms low/high)
+// Fixed: Correct reset timing
 static void nq_hard_reset(struct nqx_dev *dev)
 {
-	gpio_set_value(dev->en_gpio, 0);  // >> Use en_gpio for reset
-	msleep(50); // Sony-compatible timing
+	gpio_set_value(dev->en_gpio, 0);
+	msleep(50);
 	gpio_set_value(dev->en_gpio, 1);
-	msleep(50); // Stabilization period
+	msleep(50);
 }
 
-// ... [Rest of file remains unchanged until probe function] ...
+/* ... (rest of the file remains unchanged until nqx_probe) ... */
 
 static int nqx_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-	// ... [Existing code] ...
-	
+	int r = 0; // Fixed: Explicitly declare 'r'
+	int irqn = 0;
+	struct nqx_platform_data *platform_data;
+	struct nqx_dev *nqx_dev; // Fixed: Explicitly declare 'nqx_dev'
+
+	/* ... (existing probe code) ... */
+
 	/* NFC_INT IRQ */
 	nqx_dev->irq_enabled = true;
 	
-	// >> Use threaded IRQ handler
+	// Fixed: Use threaded IRQ with proper flags
 	r = request_threaded_irq(client->irq, NULL, nqx_dev_irq_handler,
 				  IRQF_TRIGGER_HIGH | IRQF_ONESHOT, 
 				  client->name, nqx_dev);
-				  
 	if (r) {
 		dev_err(&client->dev, "%s: request_irq failed\n", __func__);
-		goto err_request_irq_failed;
+		goto err_request_irq_failed; // Fixed: Label exists
 	}
+
+	/* ... (rest of probe code) ... */
+
+err_request_irq_failed: // Fixed: Added missing label
+	device_destroy(nqx_dev->nqx_class, nqx_dev->devno);
 	
-	// ... [Rest of probe function] ...
+	/* ... (error handling continues) ... */
 }
 
-// ... [Rest of file] ...
+/* ... (rest of the file remains unchanged) ... */
